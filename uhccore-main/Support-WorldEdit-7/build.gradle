@@ -1,0 +1,31 @@
+plugins {
+	id "java-library"
+}
+
+repositories {
+	mavenCentral()
+	maven { // For Spigot API
+		name = "spigotmc"
+		url = "https://hub.spigotmc.org/nexus/content/groups/public/"
+		content {
+			includeGroup "org.bukkit"
+			includeGroup "org.spigotmc"
+			includeGroup "net.md-5"
+		}
+	}
+	maven { // For WorldEdit
+		name = "enginehub"
+		url = "https://maven.enginehub.org/repo/"
+		content {
+			includeGroup "com.sk89q.worldedit.worldedit-libs"
+			includeGroup "com.sk89q.worldedit"
+		}
+	}
+}
+
+dependencies {
+	compileOnly "org.spigotmc:spigot-api:1.13.2-R0.1-SNAPSHOT"
+	compileOnly "com.sk89q.worldedit:worldedit-bukkit:7.1.0-SNAPSHOT"
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(8)

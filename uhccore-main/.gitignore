@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+
+# VS Code
+.vscode/
+
+# Eclipse
+bin/
+.settings/
+.project
+.classpath
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# run-paper
+/run/
+
+# MkDocs
+/docs/site/

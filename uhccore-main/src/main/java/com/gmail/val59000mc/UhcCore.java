@@ -1,0 +1,96 @@
+package com.gmail.val59000mc;
+
+import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import com.gmail.val59000mc.configuration.MainConfig;
+import com.gmail.val59000mc.game.GameManager;
+import com.gmail.val59000mc.tab.TablistManager;
+import com.gmail.val59000mc.utils.PluginForwardingHandler;
+import com.gmail.val59000mc.versionadapters.VersionAdapterLoader;
+
+import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import net.zerodind.uhccore.nms.CreateNmsAdapterException;
+import net.zerodind.uhccore.nms.NmsAdapter;
+import net.zerodind.uhccore.nms.NmsAdapterFactory;
+
+public class UhcCore extends JavaPlugin {
+
+	private static final Logger LOGGER = Logger.getLogger(UhcCore.class.getCanonicalName());
+
+	private static UhcCore pl;
+	private static Optional<NmsAdapter> nmsAdapter;
+	private static VersionAdapterLoader versionAdapterLoader;
+
+	private Logger forwardingLogger;
+	private GameManager gameManager;
+
+	// ✅ NEW
+	private TablistManager tablistManager;
+
+	@Override
+	public void onEnable() {
+		pl = this;
+
+		forwardingLogger = PluginForwardingHandler.createForwardingLogger(this);
+
+		gameManager = new GameManager();
+		gameManager.loadConfig();
+
+		loadNmsAdapter();
+		versionAdapterLoader = VersionAdapterLoader.loadAll(getClassLoader());
+
+		// ✅ NEW: load tab system
+		tablistManager = new TablistManager();
+		tablistManager.load();
+
+		if (gameManager.getConfig().get(MainConfig.ENABLE_UHC)) {
+			Bukkit.getScheduler().runTaskLater(this, () -> gameManager.loadNewGame(), 1);
+
+			if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+				new UhcCorePlaceholderExpansion(pl).register();
+			}
+
+			// ✅ apply tab for already-online players (reload safety)
+			Bukkit.getOnlinePlayers().forEach(tablistManager::apply);
+
+		} else {
+			LOGGER.warning("NOTE: UHC is disabled, by the enable-uhc option in plugins/UhcCore/config.yml");
+		}
+	}
+
+	private void loadNmsAdapter() {
+		try {
+			final NmsAdapter adapter = NmsAdapterFactory.create();
+			LOGGER.config(() -> "Loaded NMS adapter: " + adapter.getClass().getName());
+			nmsAdapter = Optional.of(adapter);
+		} catch (CreateNmsAdapterException e) {
+			LOGGER.log(Level.CONFIG, "Unable to create NMS adapter", e);
+			nmsAdapter = Optional.empty();
+		}
+	}
+
+	public static UhcCore getPlugin() {
+		return pl;
+	}
+
+	public Logger getForwardingLogger() {
+		return forwardingLogger;
+	}
+
+	public static Optional<NmsAdapter> getNmsAdapter() {
+		return nmsAdapter;
+	}
+
+	public static VersionAdapterLoader getVersionAdapterLoader() {
+		return versionAdapterLoader;
+	}
+
+	// ✅ NEW
+	public TablistManager getTablistManager() {
+		return tablistManager;
+	}
+}

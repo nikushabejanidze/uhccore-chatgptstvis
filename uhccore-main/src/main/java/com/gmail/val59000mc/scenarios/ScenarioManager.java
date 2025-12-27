@@ -1,0 +1,423 @@
+package com.gmail.val59000mc.scenarios;
+
+import com.gmail.val59000mc.UhcCore;
+import com.gmail.val59000mc.configuration.MainConfig;
+import com.gmail.val59000mc.configuration.YamlFile;
+import com.gmail.val59000mc.customitems.GameItem;
+import com.gmail.val59000mc.game.GameManager;
+import com.gmail.val59000mc.languages.Lang;
+import com.gmail.val59000mc.players.UhcPlayer;
+import com.gmail.val59000mc.scenarios.scenariolisteners.VeinMinerListener;
+import com.gmail.val59000mc.utils.FileUtils;
+import com.gmail.val59000mc.utils.NMSUtils;
+import com.gmail.val59000mc.utils.OreType;
+import com.gmail.val59000mc.utils.UniversalMaterial;
+import com.gmail.val59000mc.versionadapters.adapters.SetMaxStackSizeAdapter;
+
+import org.apache.commons.lang.Validate;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.configuration.InvalidConfigurationException;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+
+import javax.annotation.Nullable;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+public class ScenarioManager {
+
+	private static final Logger LOGGER = Logger.getLogger(ScenarioManager.class.getCanonicalName());
+
+	private static final int ROW = 9;
+
+	private final List<Scenario> registeredScenarios;
+	private final Map<Scenario, ScenarioListener> enabledScenarios;
+
+	public ScenarioManager(){
+		registeredScenarios = new ArrayList<>();
+		enabledScenarios = new HashMap<>();
+		Collections.addAll(registeredScenarios, Scenario.BUILD_IN_SCENARIOS);
+	}
+
+	/**
+	 * Used to check if an scenario is registered in UhcCore.
+	 * @param scenario Scenario to check.
+	 * @return Returns true if the scenario is registered.
+	 */
+	public boolean isRegistered(Scenario scenario) {
+		return registeredScenarios.contains(scenario);
+	}
+
+	/**
+	 * Used to register a third party scenario into UhcCore.
+	 * @param scenario The scenario to register.
+	 */
+	public void registerScenario(Scenario scenario) {
+		Validate.notNull(scenario.getInfo(), "Scenario info cannot be null!");
+		Validate.isTrue(!getScenarioByKey(scenario.getKey()).isPresent(), "An scenario with the key " + scenario.getKey() + " is already registered!");
+		registeredScenarios.add(scenario);
+	}
+
+	/**
+	 * Used to un-register a scenario
+	 * @param key The scenario key of the scenario to un-register
+	 */
+	public void unRegisterScenario(String key) {
+		Validate.notNull(key);
+		Optional<Scenario> scenario = getScenarioByKey(key);
+		Validate.isTrue(scenario.isPresent(), "There are no scenarios registered with that key!");
+		registeredScenarios.remove(scenario.get());
+	}
+
+	/**
+	 * Used to activate an scenario.
+	 * @param scenario Scenario to activate.
+	 */
+	public void enableScenario(Scenario scenario){
+		Validate.isTrue(isRegistered(scenario), "The specified scenario ("+scenario.getKey()+") is not registered!");
+
+		if (isEnabled(scenario)){
+			return;
+		}
+
+		Class<? extends ScenarioListener> listenerClass = scenario.getListener();
+
+		try {
+			ScenarioListener scenarioListener = null;
+			if (listenerClass != null) {
+				scenarioListener = listenerClass.newInstance();
+			}
+
+			enabledScenarios.put(scenario, scenarioListener);
+
+			if (scenarioListener != null) {
+				loadScenarioOptions(scenario, scenarioListener);
+				scenarioListener.onEnable();
+
+				// If disabled in the onEnable method don't register listener.
+				if (isEnabled(scenario)) {
+					Bukkit.getServer().getPluginManager().registerEvents(scenarioListener, UhcCore.getPlugin());
+				}
+			}
+		} catch (Exception ex) {
+			LOGGER.log(Level.WARNING, "Unable to load scenario", ex);
+		}
+	}
+
+	/**
+	 * Used to deactivate an scenario.
+	 * @param scenario Scenario to deactivate.
+	 */
+	public void disableScenario(Scenario scenario){
+		Validate.isTrue(isRegistered(scenario), "The specified scenario is not registered!");
+
+		ScenarioListener scenarioListener = enabledScenarios.get(scenario);
+		enabledScenarios.remove(scenario);
+
+		if (scenarioListener != null) {
+			HandlerList.unregisterAll(scenarioListener);
+			scenarioListener.onDisable();
+		}
+	}
+
+	/**
+	 * Used to toggle a scenario.
+	 * @param scenario The scenario to toggle.
+	 * @return Returns true if the scenario got enabled, false when disabled.
+	 */
+	public boolean toggleScenario(Scenario scenario){
+		if (isEnabled(scenario)){
+			disableScenario(scenario);
+			return false;
+		}
+
+		enableScenario(scenario);
+		return true;
+	}
+
+	/**
+	 * Used to obtain the scenario object matching a certain name.
+	 * @param name Name of the scenario to be searched.
+	 * @return Returns a scenario object matching the name, or null when not found.
+	 * @deprecated Replaced by {@link #getScenarioByName(String)}
+	 */
+	@Nullable
+	@Deprecated
+	public Scenario getScenario(String name) {
+		return getScenarioByName(name).orElse(null);
+	}
+
+	/**
+	 * Used to obtain the scenario object matching a certain name.
+	 * @param name Name of the scenario to be searched.
+	 * @return Returns a scenario object matching the name, or null when not found.
+	 */
+	public Optional<Scenario> getScenarioByName(String name) {
+		return registeredScenarios.stream()
+				.filter(s -> name.contains(s.getInfo().getName()))
+				.findFirst();
+	}
+
+	/**
+	 * Used to obtain the scenario object matching a certain key.
+	 * @param key Key of the scenario to be searched.
+	 * @return Returns a scenario object matching the key.
+	 */
+	public Optional<Scenario> getScenarioByKey(String key) {
+		return registeredScenarios.stream().filter(s -> s.getKey().equals(key)).findFirst();
+	}
+
+	/**
+	 * Used to obtain the scenario object matching a certain key.
+	 * @param key Key of the scenario to be searched.
+	 * @return Returns a scenario object matching the key.
+	 * @deprecated Use {@link #getScenarioByKey(String)}
+	 */
+	@Deprecated
+	public Optional<Scenario> getScenarioByOldKey(String key) {
+		return registeredScenarios.stream().filter(s -> s.getKey().replace("_", "").equalsIgnoreCase(key)).findFirst();
+	}
+
+	/**
+	 * Used to obtain enabled scenarios.
+	 * @return Returns {@link Set} of scenarios.
+	 */
+	public synchronized Set<Scenario> getEnabledScenarios(){
+		return enabledScenarios.keySet();
+	}
+
+	/**
+	 * Used to check if a scenario is enabled.
+	 * @param scenario Scenario to check.
+	 * @return Returns true if the scenario is enabled.
+	 */
+	public boolean isEnabled(Scenario scenario){
+		return enabledScenarios.containsKey(scenario);
+	}
+
+	/**
+	 * Used to obtain the {@link ScenarioListener} instance of an scenario.
+	 * @param scenario Enabled scenario to return the listener of.
+	 * @return Returns an {@link ScenarioListener}, null if the scenario doesn't have one or it's not enabled.
+	 */
+	public ScenarioListener getScenarioListener(Scenario scenario){
+		return enabledScenarios.get(scenario);
+	}
+
+	// This is an attempt to centralize the priority logic for the custom block drop scenarios.
+	// Previously, the priority was based on logic spread across all listeners, which was hard to reason
+	// about and led to a number of bugs regarding the interaction between these scenarios.
+	// Ideally, this should be made more configurable in the future, and ideally those scenarios
+	// should be made more composable rather than being mutually exclusive.
+	// Also note that some BlockBreakEvent listeners may run before/after block drop scenarios (those with non-normal event priority).
+	public Scenario getActiveBlockDropScenario(Player player, Block minedBlock) {
+		if (isEnabled(Scenario.RANDOMIZED_DROPS)) {
+			return Scenario.RANDOMIZED_DROPS;
+		} else if (UniversalMaterial.isFlowerOrDeadBush(minedBlock) && isEnabled(Scenario.FLOWER_POWER)) {
+			// Flower Power has high priority, but only for flower blocks
+			return Scenario.FLOWER_POWER;
+		} else if (!OreType.valueOf(minedBlock.getType()).isPresent() && isEnabled(Scenario.CUTCLEAN)) {
+			// CutClean has priority over Vein Miner etc. for non-ore blocks
+			return Scenario.CUTCLEAN;
+		} else if (isEnabled(Scenario.VEIN_MINER) && ((VeinMinerListener) getScenarioListener(Scenario.VEIN_MINER)).isVeinMiningActive(player)) {
+			return Scenario.VEIN_MINER;
+		} else if (isEnabled(Scenario.TRIPLE_ORES)) {
+			return Scenario.TRIPLE_ORES;
+		} else if (isEnabled(Scenario.DOUBLE_ORES)) {
+			return Scenario.DOUBLE_ORES;
+		} else if (isEnabled(Scenario.CUTCLEAN)) {
+			return Scenario.CUTCLEAN;
+		} else if (isEnabled(Scenario.DOUBLE_GOLD)) {
+			return Scenario.DOUBLE_GOLD;
+		} else {
+			return null;
+		}
+	}
+
+	public void loadDefaultScenarios(MainConfig cfg){
+		if (cfg.get(MainConfig.ENABLE_DEFAULT_SCENARIOS)){
+			List<String> defaultScenarios = cfg.get(MainConfig.DEFAULT_SCENARIOS);
+			for (String scenarioKey : defaultScenarios) {
+				Optional<Scenario> scenario = getScenarioByKey(scenarioKey);
+				if (scenario.isPresent()) {
+					LOGGER.info("Loading " + scenario.get().getKey());
+					enableScenario(scenario.get());
+				}else {
+					LOGGER.warning("Scenario with key " + scenarioKey + " can't be found!");
+				}
+			}
+		}
+	}
+
+	public Inventory getScenarioMainInventory(boolean editItem){
+
+		Inventory inv = Bukkit.createInventory(null,3*ROW, Lang.SCENARIO_GLOBAL_INVENTORY);
+
+		for (Scenario scenario : getEnabledScenarios()) {
+			if (scenario.isCompatibleWithVersion()) {
+				inv.addItem(scenario.getScenarioItem());
+			}
+		}
+
+		if (editItem){
+			// add edit item
+			ItemStack edit = new ItemStack(Material.BARRIER);
+			ItemMeta itemMeta = edit.getItemMeta();
+			itemMeta.setDisplayName(Lang.SCENARIO_GLOBAL_ITEM_EDIT);
+			edit.setItemMeta(itemMeta);
+
+			inv.setItem(26,edit);
+		}
+		return inv;
+	}
+
+	public Inventory getScenarioEditInventory(int page) {
+		Inventory inv = Bukkit.createInventory(null,6*ROW, Lang.SCENARIO_GLOBAL_INVENTORY_EDIT);
+		int scenariosPerPage = 5*ROW;
+		int first = page * scenariosPerPage;
+		int last = first + scenariosPerPage;
+
+		inv.setItem(5*ROW, GameItem.SCENARIOS_BACK.getItem());
+
+		boolean isFull = true;
+		for (int i = first; i < last; i++) {
+			if (registeredScenarios.size() == i) {
+				isFull = false;
+				break;
+			}
+			Scenario scenario = registeredScenarios.get(i);
+
+			if (!scenario.isCompatibleWithVersion()){
+				continue;
+			}
+
+			ItemStack scenarioItem = scenario.getScenarioItem();
+			if (isEnabled(scenario)){
+				scenarioItem.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+
+				final ItemMeta stackSizeMeta = scenarioItem.getItemMeta();
+				UhcCore.getVersionAdapterLoader().getVersionAdapter(SetMaxStackSizeAdapter.class).setMaxStackSize(stackSizeMeta, 64);
+				scenarioItem.setItemMeta(stackSizeMeta);
+				scenarioItem.setAmount(2);
+
+				// Hide the enchantments, we don't want that text on the display item.
+				// Note: This only works if done AFTER adding the enchantment, as of Minecraft 1.20.5 (see https://github.com/PaperMC/Paper/issues/10693).
+				ItemMeta scenarioItemMeta = scenarioItem.getItemMeta();
+				scenarioItemMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+				scenarioItem.setItemMeta(scenarioItemMeta);
+			}
+			inv.addItem(scenarioItem);
+		}
+
+		if (isFull) {
+			inv.setItem(5*ROW+8, GameItem.SCENARIOS_NEXT.getItem());
+		}
+
+		return inv;
+	}
+
+	public Inventory getScenarioVoteInventory(UhcPlayer uhcPlayer){
+		Set<Scenario> playerVotes = uhcPlayer.getScenarioVotes();
+		Inventory inv = Bukkit.createInventory(null,6*ROW, Lang.SCENARIO_GLOBAL_INVENTORY_VOTE);
+
+		for (Scenario scenario : registeredScenarios){
+			if (!isVotable(scenario)) continue;
+
+			ItemStack item = scenario.getScenarioItem();
+
+			if (playerVotes.contains(scenario)) {
+				item.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+
+				final ItemMeta stackSizeMeta = item.getItemMeta();
+				UhcCore.getVersionAdapterLoader().getVersionAdapter(SetMaxStackSizeAdapter.class).setMaxStackSize(stackSizeMeta, 64);
+				item.setItemMeta(stackSizeMeta);
+				item.setAmount(2);
+			}
+			inv.addItem(item);
+		}
+		return inv;
+	}
+
+	public void disableAllScenarios(){
+		Set<Scenario> active = new HashSet<>(getEnabledScenarios());
+		for (Scenario scenario : active){
+			disableScenario(scenario);
+		}
+	}
+
+	/**
+	 * Elect and enable the scenarios with the most votes.
+	 * <p>
+	 *     As a tiebreaker for scenarios with an equal amount
+	 *     of votes, the scenarios are elected in random order.
+	 * </p>
+	 */
+	public void electScenarios() {
+		final MainConfig config = GameManager.getGameManager().getConfig();
+		final Map<Scenario, Integer> scenarioVotes = countVotes();
+
+		final List<Scenario> candidates = registeredScenarios.stream()
+			.filter(this::isVotable)
+			.filter(s -> scenarioVotes.getOrDefault(s, 0) >= config.get(MainConfig.ELECTION_THRESHOLD))
+		.collect(Collectors.toList());
+		Collections.shuffle(candidates); // Tiebreaker
+
+		final int scenarioCount = config.get(MainConfig.ELECTED_SCENARIO_COUNT);
+		candidates.stream()
+			.sorted(Comparator.comparing(s -> scenarioVotes.getOrDefault(s, 0)).reversed())
+			.limit(scenarioCount)
+		.forEach(this::enableScenario);
+	}
+
+	private Map<Scenario, Integer> countVotes() {
+		final Map<Scenario, Integer> votes = new HashMap<>();
+		for (UhcPlayer uhcPlayer : GameManager.getGameManager().getPlayerManager().getPlayersList()) {
+			if (!uhcPlayer.isOnline()) continue;
+			for (Scenario scenario : uhcPlayer.getScenarioVotes()) {
+				final int totalVotes = votes.getOrDefault(scenario, 0) + 1;
+				votes.put(scenario, totalVotes);
+			}
+		}
+		return Collections.unmodifiableMap(votes);
+	}
+
+	private void loadScenarioOptions(Scenario scenario, ScenarioListener listener) throws ReflectiveOperationException, IOException, InvalidConfigurationException{
+		List<Field> optionFields = NMSUtils.getAnnotatedFields(listener.getClass(), Option.class);
+
+		if (optionFields.isEmpty()){
+			return;
+		}
+
+		YamlFile cfg = FileUtils.saveResourceIfNotAvailable(UhcCore.getPlugin(), "scenarios.yml");
+
+		for (Field field : optionFields){
+			Option option = field.getAnnotation(Option.class);
+			String key = option.key().isEmpty() ? field.getName() : option.key();
+			Object value = cfg.get(scenario.getKey() + "." + key, field.get(listener));
+			field.set(listener, value);
+		}
+
+		if (cfg.addedDefaultValues()){
+			cfg.saveWithComments();
+		}
+	}
+
+	private boolean isVotable(Scenario scenario) {
+		final List<String> blacklist = GameManager.getGameManager().getConfig().get(MainConfig.SCENARIO_VOTING_BLACKLIST);
+		return !blacklist.contains(scenario.getKey())
+			&& scenario.isCompatibleWithVersion()
+			&& !isEnabled(scenario);
+	}
+
+}

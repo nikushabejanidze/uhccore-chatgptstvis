@@ -1,0 +1,34 @@
+header-footer:
+  enabled: true
+  designs:
+    world-world1:
+      display-condition: '%world%=world1'
+      header:
+        - an example of world with custom
+      footer:
+        - header/footer and prefix/suffix
+
+    world-world2;world3:
+      display-condition: '%world%=world2|%world%=world3'
+      header:
+        - This is a shared header for
+        - world2 and world3
+      footer: []
+
+    server-server1:
+      display-condition: '%server%=server1'
+      header:
+        - an example of server with custom header
+      footer: []
+
+    default:
+      display-condition: '%world%!=disabledworld;%server%!=disabledserver'
+      header:
+        - ''
+        - '&#F5C339&lVanilla &f&lPvP'
+        - ''
+        - ' &7Online: &#F5C339%online%/50 &7| &7Ping: &#F5C339%ping%'
+        - ''
+      footer:
+        - ''
+        - '&#F5C339ᴅsᴄ.ɢɢ/ɢᴇᴏᴛɪᴇʀs'

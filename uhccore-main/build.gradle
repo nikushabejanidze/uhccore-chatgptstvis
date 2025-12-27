@@ -1,0 +1,241 @@
+plugins {
+	id "java-library"
+	id "maven-publish"
+	id "com.gradleup.shadow" version "9.2.2"
+	id "xyz.jpenilla.run-paper" version "3.0.1"
+	id "net.kyori.indra.git" version "3.2.0"
+}
+
+group = "net.zerodind"
+version = "1.20.16-SNAPSHOT"
+
+repositories {
+	mavenCentral()
+	maven { // For Spigot API
+		name = "spigotmc"
+		url = "https://hub.spigotmc.org/nexus/content/groups/public/"
+		content {
+			includeGroup "org.bukkit"
+			includeGroup "org.spigotmc"
+			includeGroup "net.md-5"
+		}
+	}
+	maven { // For PaperLib
+		name = "papermc"
+		url = "https://repo.papermc.io/repository/maven-public/"
+		content {
+			includeGroup "io.papermc"
+		}
+	}
+	maven { // For UhcCore NMS
+		name = "uhccore"
+		url = "https://gitlab.com/api/v4/groups/uhccore/-/packages/maven"
+		content {
+			includeGroup "net.zerodind"
+		}
+	}
+	maven { // For VaultAPI
+		name = "jitpack"
+		url = "https://jitpack.io"
+		content {
+			includeGroup "com.github.MilkBowl"
+		}
+	}
+	maven { // For AnvilGUI
+		name = "codemc"
+		url = "https://repo.codemc.io/repository/maven-snapshots/"
+		content {
+			includeGroup "net.wesjd"
+		}
+	}
+    maven { // For PlaceholderAPI
+		name = "placeholderapi"
+		url = "https://repo.extendedclip.com/releases/"
+		content {
+			includeGroup "me.clip"
+		}
+	}
+	flatDir { // For BiomeMapping
+		dirs "$rootDir/libs"
+	}
+}
+
+// Configuration for dependencies that need to be included in the shadow JAR for use at runtime.
+// We could use configurations.runtimeOnly in many cases, but the problem is that some
+// dependencies are compiled with a Java version > 8, which means they can't be included
+// on configurations.runtimeClasspath due to Gradle's "variant aware" dependency resolution.
+// See also: https://docs.gradle.org/8.0.2/userguide/variant_model.html#a_more_complicated_example
+configurations.register("shadowJar")
+
+dependencies {
+	compileOnly "org.spigotmc:spigot-api:1.15.2-R0.1-SNAPSHOT"
+	compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+	compileOnly "com.github.MilkBowl:VaultAPI:1.7"
+	compileOnly "me.clip:placeholderapi:2.11.5"
+	compileOnly "net.dmulloy2:ProtocolLib:5.3.0"
+	implementation "net.wesjd:anvilgui:1.10.10-SNAPSHOT"
+	implementation "io.papermc:paperlib:1.0.8"
+	implementation project(":Support-WorldEdit-6")
+	implementation project(":Support-WorldEdit-7")
+	implementation project(":version-adapters")
+	shadowJar project(":version-adapters:spigot_1_8_8")
+	shadowJar project(":version-adapters:spigot_1_12")
+	shadowJar project(":version-adapters:spigot_1_17")
+	shadowJar project(":version-adapters:spigot_1_17_1")
+	shadowJar project(":version-adapters:spigot_1_20_5")
+	shadowJar project(":version-adapters:chunky")
+	implementation ":BiomeMapping-1.3"
+	implementation "net.zerodind:uhccore-nms:1.1.2"
+	shadowJar "net.zerodind:uhccore-nms-1_18_R1:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_18_R2:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_19_R1:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_19_R2:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_19_R3:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_20_R1:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_20_R2:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_20_R3:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_20_R4:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_21_R1:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_21_R2:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_21_R3:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_21_R4:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_21_R5:1.0.0"
+	shadowJar "net.zerodind:uhccore-nms-1_21_R6:1.0.0"
+}
+
+java {
+	// Target Java 8 for Minecraft 1.8 support
+	toolchain.languageVersion = JavaLanguageVersion.of(8)
+
+	withJavadocJar()
+	withSourcesJar()
+}
+
+tasks.named("jar") {
+	manifest {
+		attributes(
+			"Implementation-Title": project.name,
+			"Implementation-Version": project.version
+		)
+	}
+
+	def commit = indraGit.commit()
+	if (commit != null) {
+		manifest {
+			attributes(
+				"Git-Commit": commit.getName()
+			)
+		}
+	}
+}
+
+tasks.named("shadowJar") {
+	archiveClassifier = ""
+	configurations = project.providers.zip(
+		project.configurations.named("runtimeClasspath"),
+		project.configurations.named("shadowJar")
+	) { rc, sj -> [rc, sj] }
+
+	// See https://gradleup.com/shadow/configuration/merging/#handling-duplicates-strategy
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	mergeServiceFiles()
+	filesMatching("META-INF/services/**") {
+		duplicatesStrategy = DuplicatesStrategy.INCLUDE
+	}
+
+	relocate "io.papermc.lib", "com.gmail.val59000mc.paperlib"
+	relocate "net.wesjd.anvilgui", "com.gmail.val59000mc.anvilgui"
+	relocate "com.pieterdebot.biomemapping", "com.gmail.val59000mc.biomemapping"
+}
+
+tasks.named("assemble") {
+	dependsOn tasks.named("shadowJar")
+}
+
+tasks.named("processResources") {
+	def props = [
+		"pluginVersion": getPluginVersion()
+	]
+
+	// Expanded properties must be registered as input for the task, otherwise
+	// it be considered up-to-date even though properties may have changed.
+	// https://docs.gradle.org/8.2.1/userguide/incremental_build.html#sec:task_input_output_runtime_api
+	inputs.properties(props)
+	filesMatching("plugin.yml") {
+		expand(props)
+	}
+}
+
+tasks.named("runServer") {
+	// The minecraft version to use can be changed via the mcVersion property
+	// For example: gradlew runServer -PmcVersion=1.8.8
+	def mcVersion = project.findProperty("mcVersion") ?: "1.21.10"
+	minecraftVersion mcVersion
+	runDirectory rootProject.file("run/$mcVersion")
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(getJavaVersionFor(mcVersion))
+	}
+	// These options enable remote debugging via JDWP on localhost:5005
+	// See "Testing your changes" in CONTRIBUTING.md for more details
+	jvmArgs += [ "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005" ]
+
+	// Uncomment the lines below to use a custom server jar in the project root folder.
+	// Legacy plugin loading is needed on Spigot servers.
+	//serverJar rootProject.file("spigot-1.21.jar")
+	//legacyPluginLoading()
+}
+
+// Only publish the shadowed JAR
+components.java {
+	[configurations.runtimeElements, configurations.apiElements].each {
+		withVariantsFromConfiguration(it) { skip() }
+	}
+}
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+		}
+	}
+
+	repositories {
+		maven {
+			name = "GitLab"
+			url = "https://gitlab.com/api/v4/projects/${System.getenv("CI_PROJECT_ID")}/packages/maven"
+			credentials(HttpHeaderCredentials) {
+				name = "Job-Token"
+				value = System.getenv("CI_JOB_TOKEN")
+			}
+			authentication {
+				header(HttpHeaderAuthentication)
+			}
+		}
+	}
+}
+
+int getJavaVersionFor(String mcVersion) {
+	String[] versionNumbers = mcVersion.split("\\.")
+	int minorVersion = Integer.parseInt(versionNumbers[1])
+	int patchVersion = versionNumbers.length >= 3 ? Integer.parseInt(versionNumbers[2]) : 0
+	switch (minorVersion) {
+		case 8..16: return 8
+		case 17: return 16
+		case 18..19: return 17
+		case 20: return patchVersion <= 4 ? 17 : 21
+		default: return 21
+	}
+}
+
+boolean isSnapshot() {
+	return project.version.endsWith("-SNAPSHOT");
+}
+
+String getPluginVersion() {
+	def commit = indraGit.commit()
+	if (commit != null && isSnapshot()) {
+		return project.version + "-" + commit.getName()
+	} else {
+		return project.version
+	}
+}
