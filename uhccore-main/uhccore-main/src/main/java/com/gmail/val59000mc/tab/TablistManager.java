@@ -28,7 +28,6 @@ public class TablistManager {
 	public void apply(Player player) {
 		if (!config.isEnabled()) return;
 
-		// ✅ Use YamlFile API directly (no getConfiguration())
 		ConfigurationSection designs = config.getConfigurationSection("header-footer.designs");
 		if (designs == null) return;
 
@@ -45,22 +44,14 @@ public class TablistManager {
 			header = replace(player, header);
 			footer = replace(player, footer);
 
-			// ✅ hex + legacy color support
 			header = TextUtil.toLegacy(header);
 			footer = TextUtil.toLegacy(footer);
 
-			// ✅ Works on Paper; Spigot also supports this method in modern versions
 			player.setPlayerListHeaderFooter(header, footer);
 			return;
 		}
 	}
 
-	/**
-	 * Supports:
-	 * AND: ;
-	 * OR : |
-	 * =  and !=
-	 */
 	private boolean matches(Player p, String cond) {
 		String[] andParts = cond.split(";");
 		for (String andPart : andParts) {
@@ -112,12 +103,8 @@ public class TablistManager {
 			.replace("%ping%", String.valueOf(getPingCompat(p)));
 	}
 
-	/**
-	 * ✅ Compiles even if your API jar doesn't include Player#getPing()
-	 */
 	private int getPingCompat(Player player) {
 		try {
-			// Paper/Spigot modern: Player#getPing()
 			return (int) player.getClass().getMethod("getPing").invoke(player);
 		} catch (Throwable ignored) {
 			return -1;

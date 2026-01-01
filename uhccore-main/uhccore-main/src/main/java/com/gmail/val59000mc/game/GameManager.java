@@ -6,6 +6,7 @@ import com.gmail.val59000mc.configuration.Dependencies;
 import com.gmail.val59000mc.configuration.MainConfig;
 import com.gmail.val59000mc.customitems.CraftsManager;
 import com.gmail.val59000mc.customitems.KitsManager;
+import com.gmail.val59000mc.customitems.ReviveItemCraftListener; // ✅ ADDED
 import com.gmail.val59000mc.events.UhcGameStateChangedEvent;
 import com.gmail.val59000mc.events.UhcStartingEvent;
 import com.gmail.val59000mc.events.UhcStartedEvent;
@@ -358,11 +359,17 @@ public class GameManager{
 		listeners.add(new PlayerDeathListener(playerDeathHandler));
 		listeners.add(new EntityDeathListener(playerManager, config, playerDeathHandler));
 		listeners.add(new CraftListener());
+		listeners.add(new com.gmail.val59000mc.customitems.ReviveItemUseListener());
+		listeners.add(new com.gmail.val59000mc.customitems.ReviveItemGUIListener());
+
+		// ✅ ADDED: global revive item listener (no more revive-on-craft-click)
+		listeners.add(new com.gmail.val59000mc.customitems.ReviveItemCraftListener());
 		listeners.add(new PingListener());
 		listeners.add(new BlockListener(this));
 		listeners.add(new WorldListener());
 		listeners.add(new PlayerMovementListener(playerManager));
 		listeners.add(new PlayerHungerGainListener(playerManager));
+
 		for(Listener listener : listeners){
 			Bukkit.getServer().getPluginManager().registerEvents(listener, UhcCore.getPlugin());
 		}
